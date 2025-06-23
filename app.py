@@ -1,49 +1,44 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from dotenv import load_dotenv
 import os
 
+load_dotenv()
+
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///local.db")
+
+# 設定資料庫連線
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
 
+# 資料表模型
 class HealthData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String(120), nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    water_ml = db.Column(db.Integer, nullable=True)
-    heart_rate = db.Column(db.Integer, nullable=True)
-    sleep_hour = db.Column(db.Float, nullable=True)
+    heart_rate = db.Column(db.Integer)
+    sleep_hours = db.Column(db.Float)
+    water_intake = db.Column(db.Float)
 
-@app.route("/health-data", methods=["POST"])
-def add_data():
-    data = request.get_json()
-    entry = HealthData(
-        user_id=data.get("user_id"),
-        water_ml=data.get("water_ml"),
-        heart_rate=data.get("heart_rate"),
-        sleep_hour=data.get("sleep_hour")
+# 建立資料表（第一次部署時可以用）
+with app.app_context():
+    db.create_all()
+
+@app.route('/')
+def index():
+    return 'Nuvora API is running!'
+
+@app.route('/health-data', methods=['POST'])
+def add_health_data():
+    data = request.json
+    new_data = HealthData(
+        heart_rate=data.get('heart_rate'),
+        sleep_hours=data.get('sleep_hours'),
+        water_intake=data.get('water_intake')
     )
-    db.session.add(entry)
+    db.session.add(new_data)
     db.session.commit()
-    return jsonify({"message": "Data added successfully"}), 201
+    return jsonify({'message': 'Health data stored successfully'}), 201
 
-@app.route("/health-data", methods=["GET"])
-def get_data():
-    user_id = request.args.get("user_id")
-    if not user_id:
-        return jsonify({"error": "Missing user_id"}), 400
-    records = HealthData.query.filter_by(user_id=user_id).order_by(HealthData.timestamp.desc()).all()
-    return jsonify([
-        {
-            "id": r.id,
-            "timestamp": r.timestamp.isoformat(),
-            "water_ml": r.water_ml,
-            "heart_rate": r.heart_rate,
-            "sleep_hour": r.sleep_hour
-        } for r in records
-    ])
-
-if __name__ == "__main__":
-    app.run(debug=True)
+if __name__ == '__main__':
+    app.run()
