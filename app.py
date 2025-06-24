@@ -16,9 +16,11 @@ db = SQLAlchemy(app)
 # 資料表模型
 class HealthData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String(100), nullable=False)  # ← 加這行
     heart_rate = db.Column(db.Integer)
     sleep_hours = db.Column(db.Float)
-    water_intake = db.Column(db.Float)
+    water_intake = db.Column(db.Integer)
+    timestamp = db.Column(db.DateTime, server_default=db.func.now())
 
 # 建立資料表（第一次部署時可以用）
 with app.app_context():
