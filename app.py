@@ -40,6 +40,7 @@ def add_health_data():
     db.session.commit()
     return jsonify({'message': 'Health data stored successfully'}), 201
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
