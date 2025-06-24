@@ -18,11 +18,11 @@ class HealthData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.String(100), nullable=False)
     heart_rate = db.Column(db.Integer)
-    sleep_hour = db.Column(db.Float)      # ✅ 統一名稱
-    water_ml = db.Column(db.Integer)      # ✅ 統一名稱
+    sleep_hour = db.Column(db.Float)
+    water_ml = db.Column(db.Integer)
     timestamp = db.Column(db.DateTime, server_default=db.func.now())
 
-# 建立資料表（第一次部署時可以用）
+# 建立資料表（第一次部署時可用）
 with app.app_context():
     db.create_all()
 
@@ -34,11 +34,15 @@ def index():
 def add_health_data():
     data = request.json
     new_data = HealthData(
-    user_id=data.get('user_id'),
-    heart_rate=data.get('heart_rate'),
-    sleep_hour=data.get('sleep_hour'),
-    water_ml=data.get('water_ml')
-)
+        user_id=data.get('user_id'),
+        heart_rate=data.get('heart_rate'),
+        sleep_hour=data.get('sleep_hour'),
+        water_ml=data.get('water_ml')
+    )
     db.session.add(new_data)
     db.session.commit()
     return jsonify({'message': 'Health data stored successfully'}), 201
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
