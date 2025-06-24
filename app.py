@@ -34,10 +34,11 @@ def index():
 def add_health_data():
     data = request.json
     new_data = HealthData(
-        heart_rate=data.get('heart_rate'),
-        sleep_hours=data.get('sleep_hours'),
-        water_intake=data.get('water_intake')
-    )
+    user_id=data.get('user_id'),
+    heart_rate=data.get('heart_rate'),
+    sleep_hour=data.get('sleep_hour'),
+    water_ml=data.get('water_ml')
+)
     db.session.add(new_data)
     db.session.commit()
     return jsonify({'message': 'Health data stored successfully'}), 201
