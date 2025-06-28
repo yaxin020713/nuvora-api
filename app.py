@@ -22,7 +22,7 @@ with app.app_context():
     db.create_all()
 
 # === 設定 OpenAI 金鑰 ===
-openai.api_key = os.environ.get("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")
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 # === Health Data API ===
 @app.route('/health-data', methods=['POST'])
