@@ -1,10 +1,8 @@
 services:
   - type: web
-    name: nuvora-whisper-api
+    name: nuvora-api
     env: python
+    region: singapore
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
-    envVars:
-      - key: OPENAI_API_KEY
-        sync: false
