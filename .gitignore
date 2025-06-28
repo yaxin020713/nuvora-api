@@ -1,1 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# macOS 系統垃圾
+.DS_Store
+
+# .env 不要推到 GitHub
 .env
+
+# VSCode 或其他 IDE 設定（如果有）
+.vscode/
+
+# virtualenv （如果有）
+venv/
