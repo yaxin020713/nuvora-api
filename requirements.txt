@@ -1,2 +1,6 @@
 Flask==2.3.2
+gunicorn==21.2.0
 openai==1.3.9
+# 如果有
+SpeechRecognition==3.10.1
+pydub==0.25.1
