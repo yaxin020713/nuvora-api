@@ -1,48 +1,41 @@
 from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from dotenv import load_dotenv
+import openai
 import os
-
-load_dotenv()
 
 app = Flask(__name__)
 
-# 設定資料庫連線
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# 建議從環境變數讀取
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-db = SQLAlchemy(app)
-
-# 資料表模型
-class HealthData(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String(100), nullable=False)
-    heart_rate = db.Column(db.Integer)
-    sleep_hour = db.Column(db.Float)
-    water_ml = db.Column(db.Integer)
-    timestamp = db.Column(db.DateTime, server_default=db.func.now())
-
-# 建立資料表（第一次部署時可用）
-with app.app_context():
-    db.create_all()
-
-@app.route('/')
-def index():
-    return 'Nuvora API is running!'
-
-@app.route('/health-data', methods=['POST'])
-def add_health_data():
+@app.route('/whisper', methods=['POST'])
+def whisper_gpt():
     data = request.json
-    new_data = HealthData(
-        user_id=data.get('user_id'),
-        heart_rate=data.get('heart_rate'),
-        sleep_hour=data.get('sleep_hour'),
-        water_ml=data.get('water_ml')
+    text = data.get('text', '')
+
+    prompt = f"""
+    使用者說：「{text}」
+    請將此句轉成 JSON，包含：
+    - heartRate
+    - waterIntake
+    - sleepHours
+    沒有的值給 null，只要回傳 JSON。
+    """
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "你是一個健康數據解析助手"},
+            {"role": "user", "content": prompt}
+        ]
     )
-    db.session.add(new_data)
-    db.session.commit()
-    return jsonify({'message': 'Health data stored successfully'}), 201
+
+    answer = response.choices[0].message.content
+    try:
+        result = eval(answer) if '{' in answer else {}
+    except:
+        result = {}
+
+    return jsonify(result)
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
