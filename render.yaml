@@ -2,11 +2,13 @@ services:
   - type: web
     name: nuvora-api
     runtime: python
-    buildCommand: ""
-    startCommand: "gunicorn app:app"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
     envVars:
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: nuvora-db
+          property: connectionString
       - key: OPENAI_API_KEY
         sync: false
-
+    pythonVersion: 3.10
