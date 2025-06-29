@@ -2,16 +2,5 @@ services:
   - type: web
     name: nuvora-api
     env: python
-    region: singapore
-    plan: free
-
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
-
-    runtime: python3.9 # ✅ 強制使用穩定版 Python
-
-    envVars:
-      - key: OPENAI_API_KEY
-        sync: false # Render 會從 Dashboard 的環境變數讀取
-      - key: DATABASE_URL
-        sync: false # 你的 DB URL 也是這樣處理
