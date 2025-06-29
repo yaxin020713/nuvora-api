@@ -8,7 +8,7 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
 
-    runtime: python3.10 # ✅ 強制使用穩定版 Python
+    runtime: python3.9 # ✅ 強制使用穩定版 Python
 
     envVars:
       - key: OPENAI_API_KEY
