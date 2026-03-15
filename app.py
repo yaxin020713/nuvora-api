@@ -1,6 +1,6 @@
 import os
 import json
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -68,30 +68,15 @@ def create_health_data_record(payload):
     db.session.commit()
     return record
 
-# Whisper + GPT 路由
-@app.route("/whisper", methods=["POST"])
-def whisper_gpt():
-    if not OPENAI_API_KEY:
-        return jsonify({"error": "OPENAI_API_KEY is not configured"}), 500
 
-    audio_file = request.files.get("audio")
-    if not audio_file:
-        return jsonify({"error": "audio file is required"}), 400
-
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    transcript = client.audio.transcriptions.create(
-        model="whisper-1",
-        file=audio_file
-    )
-
-    text = transcript.text
-
+def parse_health_text(client, text):
     prompt = f"""
     使用者說：「{text}」
     請將此句轉成 JSON，包含：
     - heartRate
     - waterIntake
     - sleepHours
+    如果缺少某欄位，請填 null。
     """
 
     response = client.chat.completions.create(
@@ -103,9 +88,15 @@ def whisper_gpt():
         ]
     )
 
-    gpt_result = json.loads(response.choices[0].message.content)
-    save_result = request.form.get("save", "false").lower() == "true"
-    user_id = request.form.get("user_id")
+    return json.loads(response.choices[0].message.content)
+
+
+def parse_and_optionally_save(text, user_id=None, save_result=False):
+    if not OPENAI_API_KEY:
+        return None, "OPENAI_API_KEY is not configured", 500
+
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    gpt_result = parse_health_text(client, text)
 
     saved_record = None
     if save_result:
@@ -116,16 +107,66 @@ def whisper_gpt():
             "sleep_hours": gpt_result.get("sleepHours"),
         })
         if error:
-            return jsonify({"error": error}), 400
+            return None, error, 400
 
         saved_record = create_health_data_record(normalized_payload)
 
-    return jsonify({
-        "whisper_result": text,
+    return {
+        "input_text": text,
         "gpt_result": gpt_result,
         "saved": bool(saved_record),
         "saved_record": serialize_health_data(saved_record) if saved_record else None,
-    })
+    }, None, 200
+
+# Whisper + GPT 路由
+@app.route("/whisper", methods=["POST"])
+def whisper_gpt():
+    audio_file = request.files.get("audio")
+    if not audio_file:
+        return jsonify({"error": "audio file is required"}), 400
+
+    if not OPENAI_API_KEY:
+        return jsonify({"error": "OPENAI_API_KEY is not configured"}), 500
+
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    transcript = client.audio.transcriptions.create(
+        model="whisper-1",
+        file=audio_file
+    )
+
+    save_result = request.form.get("save", "false").lower() == "true"
+    user_id = request.form.get("user_id")
+    result, error, status_code = parse_and_optionally_save(
+        transcript.text,
+        user_id=user_id,
+        save_result=save_result,
+    )
+    if error:
+        return jsonify({"error": error}), status_code
+
+    result["whisper_result"] = transcript.text
+    return jsonify(result)
+
+
+@app.route("/parse-text", methods=["POST"])
+def parse_text():
+    payload = request.get_json()
+    if not payload:
+        return jsonify({"error": "JSON body is required"}), 400
+
+    input_text = payload.get("text")
+    if not input_text:
+        return jsonify({"error": "text is required"}), 400
+
+    result, error, status_code = parse_and_optionally_save(
+        input_text,
+        user_id=payload.get("user_id"),
+        save_result=bool(payload.get("save")),
+    )
+    if error:
+        return jsonify({"error": error}), status_code
+
+    return jsonify(result), status_code
 
 
 @app.route("/health-data", methods=["GET"])
@@ -158,6 +199,11 @@ def add_health_data():
 # 根目錄測試
 @app.route("/")
 def index():
+    return render_template("index.html")
+
+
+@app.route("/status")
+def status():
     return jsonify({"message": "Nuvora API running!"})
 
 
