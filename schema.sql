@@ -1,8 +1,7 @@
 CREATE TABLE health_data (
     id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    water_ml INTEGER,
     heart_rate INTEGER,
-    sleep_hour FLOAT
+    water_intake INTEGER,
+    sleep_hours FLOAT
 );
