@@ -2,16 +2,20 @@ import os
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # 初始化 Flask
 app = Flask(__name__)
 
 # 讀取環境變數
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL") or "sqlite:///nuvora.db"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # 設定 SQLAlchemy
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 # 定義資料表
@@ -28,6 +32,9 @@ with app.app_context():
 # Whisper + GPT 路由
 @app.route("/whisper", methods=["POST"])
 def whisper_gpt():
+    if not OPENAI_API_KEY:
+        return jsonify({"error": "OPENAI_API_KEY is not configured"}), 500
+
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     audio_file = request.files["audio"]
@@ -74,3 +81,7 @@ def add_health_data():
 @app.route("/")
 def index():
     return jsonify({"message": "Nuvora API running!"})
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
