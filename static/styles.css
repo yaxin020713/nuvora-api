@@ -76,6 +76,33 @@ body {
   padding: 24px;
 }
 
+.auth-panel {
+  margin-bottom: 20px;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.auth-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-status p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.secondary-button {
+  background: linear-gradient(135deg, #475569, #334155);
+}
+
 .history-panel {
   background: var(--panel-strong);
 }
@@ -155,6 +182,13 @@ button:hover {
   box-shadow: 0 10px 24px rgba(15, 118, 110, 0.24);
 }
 
+button:disabled,
+input:disabled,
+textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .result {
   margin: 18px 0 0;
   border-radius: 20px;
@@ -179,6 +213,11 @@ button:hover {
 .history-list {
   display: grid;
   gap: 12px;
+}
+
+.history-caption {
+  margin: 0 0 18px;
+  color: var(--muted);
 }
 
 .history-item {
@@ -208,6 +247,7 @@ button:hover {
 }
 
 @media (max-width: 860px) {
+  .auth-grid,
   .grid {
     grid-template-columns: 1fr;
   }

@@ -1,16 +1,27 @@
 import json
 import os
+import secrets
+from functools import wraps
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, session
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from openai import OpenAI
+from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv()
 
 db = SQLAlchemy()
 migrate = Migrate()
+
+
+class User(db.Model):
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
 
 
 class HealthData(db.Model):
@@ -25,11 +36,8 @@ class HealthData(db.Model):
 
 def get_database_url():
     database_url = os.getenv("DATABASE_URL") or "sqlite:///nuvora.db"
-
-    # Some managed platforms still provide postgres:// URLs.
     if database_url.startswith("postgres://"):
         return database_url.replace("postgres://", "postgresql://", 1)
-
     return database_url
 
 
@@ -41,6 +49,10 @@ def serialize_health_data(record):
         "water_intake": record.water_intake,
         "sleep_hours": record.sleep_hours,
     }
+
+
+def serialize_user(user):
+    return {"id": user.id, "username": user.username}
 
 
 def validate_health_payload(payload):
@@ -71,6 +83,24 @@ def create_health_data_record(payload):
     return record
 
 
+def get_current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    return User.query.get(user_id)
+
+
+def login_required(route):
+    @wraps(route)
+    def wrapped(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            return jsonify({"error": "Authentication required"}), 401
+        return route(user, *args, **kwargs)
+
+    return wrapped
+
+
 def parse_health_text(client, text):
     prompt = f"""
     使用者說：「{text}」
@@ -89,7 +119,6 @@ def parse_health_text(client, text):
             {"role": "user", "content": prompt},
         ],
     )
-
     return json.loads(response.choices[0].message.content)
 
 
@@ -128,6 +157,8 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = get_database_url()
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -140,41 +171,73 @@ def create_app():
     def status():
         return jsonify({"message": "Nuvora API running!"})
 
+    @app.route("/auth/me")
+    def auth_me():
+        user = get_current_user()
+        return jsonify({"authenticated": bool(user), "user": serialize_user(user) if user else None})
+
+    @app.route("/auth/register", methods=["POST"])
+    def register():
+        payload = request.get_json()
+        if not payload:
+            return jsonify({"error": "JSON body is required"}), 400
+
+        username = (payload.get("username") or "").strip()
+        password = payload.get("password") or ""
+        if len(username) < 3:
+            return jsonify({"error": "username must be at least 3 characters"}), 400
+        if len(password) < 6:
+            return jsonify({"error": "password must be at least 6 characters"}), 400
+        if User.query.filter_by(username=username).first():
+            return jsonify({"error": "username already exists"}), 409
+
+        user = User(username=username, password_hash=generate_password_hash(password))
+        db.session.add(user)
+        db.session.commit()
+        session["user_id"] = user.id
+        return jsonify({"message": "Registered successfully", "user": serialize_user(user)}), 201
+
+    @app.route("/auth/login", methods=["POST"])
+    def login():
+        payload = request.get_json()
+        if not payload:
+            return jsonify({"error": "JSON body is required"}), 400
+
+        username = (payload.get("username") or "").strip()
+        password = payload.get("password") or ""
+        user = User.query.filter_by(username=username).first()
+        if not user or not check_password_hash(user.password_hash, password):
+            return jsonify({"error": "invalid username or password"}), 401
+
+        session["user_id"] = user.id
+        return jsonify({"message": "Logged in successfully", "user": serialize_user(user)})
+
+    @app.route("/auth/logout", methods=["POST"])
+    def logout():
+        session.clear()
+        return jsonify({"message": "Logged out"})
+
     @app.route("/health-data", methods=["GET"])
-    def list_health_data():
-        user_id = request.args.get("user_id")
-        query = HealthData.query
-
-        if user_id:
-            query = query.filter_by(user_id=user_id)
-
-        records = query.order_by(HealthData.id.desc()).all()
-        return jsonify(
-            {
-                "count": len(records),
-                "items": [serialize_health_data(record) for record in records],
-            }
-        )
+    @login_required
+    def list_health_data(current_user):
+        records = HealthData.query.filter_by(user_id=current_user.username).order_by(HealthData.id.desc()).all()
+        return jsonify({"count": len(records), "items": [serialize_health_data(record) for record in records]})
 
     @app.route("/health-data", methods=["POST"])
-    def add_health_data():
-        normalized_payload, error = validate_health_payload(request.get_json())
+    @login_required
+    def add_health_data(current_user):
+        payload = request.get_json() or {}
+        payload["user_id"] = current_user.username
+        normalized_payload, error = validate_health_payload(payload)
         if error:
             return jsonify({"error": error}), 400
 
         new_data = create_health_data_record(normalized_payload)
-        return (
-            jsonify(
-                {
-                    "message": "Health data added successfully",
-                    "data": serialize_health_data(new_data),
-                }
-            ),
-            201,
-        )
+        return jsonify({"message": "Health data added successfully", "data": serialize_health_data(new_data)}), 201
 
     @app.route("/parse-text", methods=["POST"])
-    def parse_text():
+    @login_required
+    def parse_text(current_user):
         payload = request.get_json()
         if not payload:
             return jsonify({"error": "JSON body is required"}), 400
@@ -186,7 +249,7 @@ def create_app():
         result, error, status_code = parse_and_optionally_save(
             input_text,
             app.config["OPENAI_API_KEY"],
-            user_id=payload.get("user_id"),
+            user_id=current_user.username,
             save_result=bool(payload.get("save")),
         )
         if error:
@@ -195,7 +258,8 @@ def create_app():
         return jsonify(result), status_code
 
     @app.route("/whisper", methods=["POST"])
-    def whisper_gpt():
+    @login_required
+    def whisper_gpt(current_user):
         audio_file = request.files.get("audio")
         if not audio_file:
             return jsonify({"error": "audio file is required"}), 400
@@ -210,7 +274,7 @@ def create_app():
         result, error, status_code = parse_and_optionally_save(
             transcript.text,
             openai_api_key,
-            user_id=request.form.get("user_id"),
+            user_id=current_user.username,
             save_result=request.form.get("save", "false").lower() == "true",
         )
         if error:
@@ -221,10 +285,16 @@ def create_app():
 
     @app.cli.command("seed-local-data")
     def seed_local_data():
-        sample = HealthData(user_id="demo-user", heart_rate=72, water_intake=1800, sleep_hours=7.5)
+        user = User.query.filter_by(username="demo-user").first()
+        if not user:
+            user = User(username="demo-user", password_hash=generate_password_hash("demo-pass"))
+            db.session.add(user)
+            db.session.commit()
+
+        sample = HealthData(user_id=user.username, heart_rate=72, water_intake=1800, sleep_hours=7.5)
         db.session.add(sample)
         db.session.commit()
-        print("Seeded demo health data.")
+        print("Seeded demo user and health data.")
 
     return app
 

@@ -13,8 +13,47 @@
   <main class="shell">
     <section class="hero">
       <p class="eyebrow">Nuvora Health Console</p>
-      <h1>把日常健康紀錄整理成可追蹤的資料流。</h1>
-      <p class="intro">你現在可以直接輸入一句話、上傳語音，並在同一頁查看過去的健康資料。</p>
+      <h1>把健康資料收集，變成你自己的登入後儀表板。</h1>
+      <p class="intro">先登入，再用文字或語音記錄健康狀態，所有資料都只會顯示目前帳號的歷史內容。</p>
+    </section>
+
+    <section class="panel auth-panel">
+      <div class="panel-head">
+        <h2>帳號區</h2>
+        <span>Session Auth</span>
+      </div>
+      <div class="auth-grid">
+        <form id="register-form" class="stack">
+          <h3>註冊</h3>
+          <label>
+            <span>帳號</span>
+            <input id="register-username" type="text" placeholder="至少 3 個字元">
+          </label>
+          <label>
+            <span>密碼</span>
+            <input id="register-password" type="password" placeholder="至少 6 個字元">
+          </label>
+          <button type="submit">建立帳號</button>
+        </form>
+
+        <form id="login-form" class="stack">
+          <h3>登入</h3>
+          <label>
+            <span>帳號</span>
+            <input id="login-username" type="text" placeholder="輸入帳號">
+          </label>
+          <label>
+            <span>密碼</span>
+            <input id="login-password" type="password" placeholder="輸入密碼">
+          </label>
+          <button type="submit">登入</button>
+        </form>
+      </div>
+      <div class="auth-status">
+        <p id="auth-message">尚未登入。</p>
+        <button id="logout-button" type="button" class="secondary-button">登出</button>
+      </div>
+      <pre id="auth-result" class="result">請先註冊或登入。</pre>
     </section>
 
     <section class="grid">
@@ -25,18 +64,14 @@
         </div>
         <form id="text-form" class="stack">
           <label>
-            <span>使用者 ID</span>
-            <input id="text-user-id" name="user_id" type="text" value="local-dev">
-          </label>
-          <label>
             <span>今天想記錄什麼？</span>
             <textarea id="text-input" name="text" rows="5" placeholder="例如：我今天喝了1800ml的水，睡了7小時，平均心率72"></textarea>
           </label>
           <label class="checkbox">
             <input id="text-save" name="save" type="checkbox" checked>
-            <span>解析後直接存進資料庫</span>
+            <span>解析後直接存進我的資料庫</span>
           </label>
-          <button type="submit">送出文字紀錄</button>
+          <button id="text-submit" type="submit">送出文字紀錄</button>
         </form>
         <pre id="text-result" class="result">尚未送出文字解析。</pre>
       </article>
@@ -47,19 +82,15 @@
           <span>Whisper + GPT</span>
         </div>
         <form id="audio-form" class="stack">
-          <label>
-            <span>使用者 ID</span>
-            <input id="audio-user-id" name="user_id" type="text" value="local-dev">
-          </label>
           <label class="file-picker">
             <span>上傳音檔</span>
             <input id="audio-file" name="audio" type="file" accept="audio/*">
           </label>
           <label class="checkbox">
             <input id="audio-save" name="save" type="checkbox" checked>
-            <span>語音解析後直接存進資料庫</span>
+            <span>語音解析後直接存進我的資料庫</span>
           </label>
-          <button type="submit">送出語音檔</button>
+          <button id="audio-submit" type="submit">送出語音檔</button>
         </form>
         <pre id="audio-result" class="result">尚未送出語音解析。</pre>
       </article>
@@ -68,12 +99,9 @@
     <section class="panel history-panel">
       <div class="panel-head">
         <h2>過去資料顯示</h2>
-        <span>History Feed</span>
+        <span>Private History</span>
       </div>
-      <form id="filter-form" class="history-controls">
-        <input id="history-user-id" type="text" placeholder="輸入 user_id 篩選，例如 local-dev">
-        <button type="submit">重新整理</button>
-      </form>
+      <p class="history-caption">這裡只顯示目前登入帳號的健康紀錄。</p>
       <div id="history-list" class="history-list"></div>
     </section>
   </main>
