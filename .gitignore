@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.pyc
+migrations/__pycache__/
 
 # macOS 系統垃圾
 .DS_Store
