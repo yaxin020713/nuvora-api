@@ -83,6 +83,14 @@ final class APIClient {
         clearToken()
     }
 
+    func deleteAccount(password: String) async throws {
+        var request = request(path: "auth/account", method: "DELETE")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(DeleteAccountRequest(password: password))
+        _ = try await send(request, as: MessageResponse.self)
+        clearToken()
+    }
+
     func fetchHealthData() async throws -> [HealthRecord] {
         let response = try await send(request(path: "health-data"), as: HealthListResponse.self)
         return response.items
@@ -140,6 +148,10 @@ private struct CredentialsRequest: Encodable {
 private struct ParseTextRequest: Encodable {
     let text: String
     let save: Bool
+}
+
+private struct DeleteAccountRequest: Encodable {
+    let password: String
 }
 
 private extension Data {

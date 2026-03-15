@@ -10,6 +10,7 @@ A simple Flask app for collecting and viewing health data.
 - `POST /auth/register` create an account, log in, and return a Bearer token
 - `POST /auth/login` log in and return a Bearer token
 - `POST /auth/logout` log out the current session or invalidate the current Bearer token
+- `DELETE /auth/account` delete the current account after password confirmation
 - `GET /health-data` list health records for the current logged-in user
 - `POST /health-data` create a health record for the current logged-in user
 - `POST /parse-text` parse a natural-language health message and optionally save it for the current logged-in user

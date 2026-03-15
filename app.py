@@ -133,6 +133,12 @@ def clear_api_token(user):
     db.session.commit()
 
 
+def delete_user_account(user):
+    HealthData.query.filter_by(user_id=user.username).delete()
+    db.session.delete(user)
+    db.session.commit()
+
+
 def login_required(route):
     @wraps(route)
     def wrapped(*args, **kwargs):
@@ -264,6 +270,22 @@ def create_app():
             clear_api_token(user)
         session.clear()
         return jsonify({"message": "Logged out"})
+
+    @app.route("/auth/account", methods=["DELETE"])
+    @login_required
+    def delete_account(current_user):
+        payload = request.get_json()
+        if not payload:
+            return jsonify({"error": "JSON body is required"}), 400
+
+        password = payload.get("password") or ""
+        if not check_password_hash(current_user.password_hash, password):
+            return jsonify({"error": "invalid password"}), 401
+
+        username = current_user.username
+        delete_user_account(current_user)
+        session.clear()
+        return jsonify({"message": f"Account {username} deleted successfully"})
 
     @app.route("/health-data", methods=["GET"])
     @login_required

@@ -15,6 +15,7 @@ This folder contains a paste-ready SwiftUI app skeleton for the current Flask ba
 - `POST /auth/register`
 - `POST /auth/login`
 - `POST /auth/logout`
+- `DELETE /auth/account`
 - `GET /auth/me`
 - `GET /health-data`
 - `POST /health-data`
