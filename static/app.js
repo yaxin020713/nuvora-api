@@ -9,8 +9,16 @@ const audioForm = document.getElementById("audio-form");
 const textResult = document.getElementById("text-result");
 const audioResult = document.getElementById("audio-result");
 const historyList = document.getElementById("history-list");
+const audioFileInput = document.getElementById("audio-file");
+const audioPreview = document.getElementById("audio-preview");
+const recordStartButton = document.getElementById("record-start");
+const recordStopButton = document.getElementById("record-stop");
+const recordingStatus = document.getElementById("recording-status");
 
 let currentUser = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordedBlob = null;
 
 function showResult(target, payload) {
   target.textContent = JSON.stringify(payload, null, 2);
@@ -34,6 +42,12 @@ function setAuthState(user) {
 
   if (!authenticated) {
     historyList.innerHTML = '<div class="empty-state">登入後才能查看你的健康紀錄。</div>';
+  }
+
+  if (!authenticated) {
+    recordingStatus.textContent = "請先登入後再錄音。";
+  } else if (!recordedBlob) {
+    recordingStatus.textContent = "尚未開始錄音。";
   }
 }
 
@@ -83,6 +97,74 @@ async function submitJson(url, body) {
   return { response, payload };
 }
 
+function resetRecordingPreview() {
+  recordedBlob = null;
+  audioPreview.removeAttribute("src");
+  audioPreview.load();
+}
+
+function setRecorderButtons(isRecording) {
+  recordStartButton.disabled = !currentUser || isRecording;
+  recordStopButton.disabled = !currentUser || !isRecording;
+}
+
+function getRecordedFile() {
+  if (!recordedBlob) {
+    return null;
+  }
+
+  const extension = recordedBlob.type.includes("mp4") ? "m4a" : "webm";
+  return new File([recordedBlob], `nuvora-recording.${extension}`, {
+    type: recordedBlob.type || "audio/webm",
+  });
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    showResult(audioResult, { error: "目前瀏覽器不支援直接錄音，請改用上傳音檔。" });
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const preferredMimeType = MediaRecorder.isTypeSupported("audio/webm")
+      ? "audio/webm"
+      : "";
+
+    recordedChunks = [];
+    mediaRecorder = preferredMimeType
+      ? new MediaRecorder(stream, { mimeType: preferredMimeType })
+      : new MediaRecorder(stream);
+
+    mediaRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    });
+
+    mediaRecorder.addEventListener("stop", () => {
+      recordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      audioPreview.src = URL.createObjectURL(recordedBlob);
+      recordingStatus.textContent = "錄音完成，可以直接送出或重新錄一次。";
+      setRecorderButtons(false);
+      stream.getTracks().forEach((track) => track.stop());
+    });
+
+    mediaRecorder.start();
+    resetRecordingPreview();
+    recordingStatus.textContent = "錄音中...";
+    setRecorderButtons(true);
+  } catch (error) {
+    showResult(audioResult, { error: "無法啟用麥克風，請確認瀏覽器權限已開啟。" });
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+}
+
 registerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -116,6 +198,8 @@ loginForm.addEventListener("submit", async (event) => {
 logoutButton.addEventListener("click", async () => {
   const { payload } = await submitJson("/auth/logout", {});
   showResult(authResult, payload);
+  resetRecordingPreview();
+  setRecorderButtons(false);
   setAuthState(null);
 });
 
@@ -136,9 +220,9 @@ textForm.addEventListener("submit", async (event) => {
 audioForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const file = document.getElementById("audio-file").files[0];
+  const file = audioFileInput.files[0] || getRecordedFile();
   if (!file) {
-    showResult(audioResult, { error: "請先選擇音檔" });
+    showResult(audioResult, { error: "請先錄音或選擇音檔" });
     return;
   }
 
@@ -158,7 +242,19 @@ audioForm.addEventListener("submit", async (event) => {
   }
 });
 
+recordStartButton.addEventListener("click", startRecording);
+recordStopButton.addEventListener("click", stopRecording);
+
+audioFileInput.addEventListener("change", () => {
+  if (audioFileInput.files[0]) {
+    recordedBlob = null;
+    audioPreview.src = URL.createObjectURL(audioFileInput.files[0]);
+    recordingStatus.textContent = "已選擇音檔，可以直接送出。";
+  }
+});
+
 loadAuthState().then((user) => {
+  setRecorderButtons(false);
   if (user) {
     loadHistory();
   }

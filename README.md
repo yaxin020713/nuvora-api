@@ -7,13 +7,19 @@ A simple Flask app for collecting and viewing health data.
 - `GET /` dashboard UI
 - `GET /status` health check
 - `GET /auth/me` read current session state
-- `POST /auth/register` create an account and log in
-- `POST /auth/login` log in
-- `POST /auth/logout` log out
+- `POST /auth/register` create an account, log in, and return a Bearer token
+- `POST /auth/login` log in and return a Bearer token
+- `POST /auth/logout` log out the current session or invalidate the current Bearer token
 - `GET /health-data` list health records for the current logged-in user
 - `POST /health-data` create a health record for the current logged-in user
 - `POST /parse-text` parse a natural-language health message and optionally save it for the current logged-in user
 - `POST /whisper` upload an `audio` file for Whisper + GPT parsing and optionally save it for the current logged-in user
+
+## iOS-Friendly Auth
+
+- Native apps can call `POST /auth/register` or `POST /auth/login` and store the returned `token`
+- Send `Authorization: Bearer <token>` on future API requests
+- The web dashboard still works with session cookies, so both web and iOS can share the same backend
 
 ## Local Development
 

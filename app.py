@@ -22,6 +22,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    api_token_hash = db.Column(db.String(255), nullable=True)
 
 
 class HealthData(db.Model):
@@ -53,6 +54,14 @@ def serialize_health_data(record):
 
 def serialize_user(user):
     return {"id": user.id, "username": user.username}
+
+
+def serialize_auth_response(user, token=None):
+    payload = {"user": serialize_user(user)}
+    if token:
+        payload["token"] = token
+        payload["token_type"] = "Bearer"
+    return payload
 
 
 def validate_health_payload(payload):
@@ -90,10 +99,44 @@ def get_current_user():
     return User.query.get(user_id)
 
 
+def get_bearer_token():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    return auth_header.split(" ", 1)[1].strip() or None
+
+
+def get_current_api_user():
+    token = get_bearer_token()
+    if not token:
+        return None
+
+    for user in User.query.filter(User.api_token_hash.isnot(None)).all():
+        if check_password_hash(user.api_token_hash, token):
+            return user
+    return None
+
+
+def get_authenticated_user():
+    return get_current_api_user() or get_current_user()
+
+
+def issue_api_token(user):
+    raw_token = secrets.token_urlsafe(32)
+    user.api_token_hash = generate_password_hash(raw_token)
+    db.session.commit()
+    return raw_token
+
+
+def clear_api_token(user):
+    user.api_token_hash = None
+    db.session.commit()
+
+
 def login_required(route):
     @wraps(route)
     def wrapped(*args, **kwargs):
-        user = get_current_user()
+        user = get_authenticated_user()
         if not user:
             return jsonify({"error": "Authentication required"}), 401
         return route(user, *args, **kwargs)
@@ -173,7 +216,7 @@ def create_app():
 
     @app.route("/auth/me")
     def auth_me():
-        user = get_current_user()
+        user = get_authenticated_user()
         return jsonify({"authenticated": bool(user), "user": serialize_user(user) if user else None})
 
     @app.route("/auth/register", methods=["POST"])
@@ -195,7 +238,8 @@ def create_app():
         db.session.add(user)
         db.session.commit()
         session["user_id"] = user.id
-        return jsonify({"message": "Registered successfully", "user": serialize_user(user)}), 201
+        token = issue_api_token(user)
+        return jsonify({"message": "Registered successfully", **serialize_auth_response(user, token)}), 201
 
     @app.route("/auth/login", methods=["POST"])
     def login():
@@ -210,10 +254,14 @@ def create_app():
             return jsonify({"error": "invalid username or password"}), 401
 
         session["user_id"] = user.id
-        return jsonify({"message": "Logged in successfully", "user": serialize_user(user)})
+        token = issue_api_token(user)
+        return jsonify({"message": "Logged in successfully", **serialize_auth_response(user, token)})
 
     @app.route("/auth/logout", methods=["POST"])
     def logout():
+        user = get_authenticated_user()
+        if user and get_bearer_token():
+            clear_api_token(user)
         session.clear()
         return jsonify({"message": "Logged out"})
 
@@ -287,7 +335,10 @@ def create_app():
     def seed_local_data():
         user = User.query.filter_by(username="demo-user").first()
         if not user:
-            user = User(username="demo-user", password_hash=generate_password_hash("demo-pass"))
+            user = User(
+                username="demo-user",
+                password_hash=generate_password_hash("demo-pass"),
+            )
             db.session.add(user)
             db.session.commit()
 

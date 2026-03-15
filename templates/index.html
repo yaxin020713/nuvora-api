@@ -82,8 +82,19 @@
           <span>Whisper + GPT</span>
         </div>
         <form id="audio-form" class="stack">
+          <div class="recorder-card">
+            <div class="recorder-head">
+              <span>直接錄音</span>
+              <p id="recording-status">尚未開始錄音。</p>
+            </div>
+            <div class="recorder-actions">
+              <button id="record-start" type="button">開始錄音</button>
+              <button id="record-stop" type="button" class="secondary-button">停止錄音</button>
+            </div>
+            <audio id="audio-preview" controls class="audio-preview"></audio>
+          </div>
           <label class="file-picker">
-            <span>上傳音檔</span>
+            <span>或上傳音檔</span>
             <input id="audio-file" name="audio" type="file" accept="audio/*">
           </label>
           <label class="checkbox">
