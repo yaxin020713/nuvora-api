@@ -1,6 +1,7 @@
 import json
 import os
 import secrets
+from datetime import datetime, timezone
 from functools import wraps
 
 from dotenv import load_dotenv
@@ -23,6 +24,8 @@ class User(db.Model):
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     api_token_hash = db.Column(db.String(255), nullable=True)
+    invite_code_id = db.Column(db.Integer, db.ForeignKey("invite_codes.id"), nullable=True)
+    invite_code_value = db.Column(db.String(64), nullable=True)
 
 
 class HealthData(db.Model):
@@ -33,6 +36,19 @@ class HealthData(db.Model):
     heart_rate = db.Column(db.Integer)
     water_intake = db.Column(db.Integer)
     sleep_hours = db.Column(db.Float)
+
+
+class InviteCode(db.Model):
+    __tablename__ = "invite_codes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(64), unique=True, nullable=False)
+    label = db.Column(db.String(120), nullable=True)
+    max_uses = db.Column(db.Integer, nullable=False, default=1)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    users = db.relationship("User", backref="invite_code", lazy=True)
 
 
 def get_database_url():
@@ -53,7 +69,24 @@ def serialize_health_data(record):
 
 
 def serialize_user(user):
-    return {"id": user.id, "username": user.username}
+    payload = {"id": user.id, "username": user.username}
+    if user.invite_code_value:
+        payload["invite_code"] = user.invite_code_value
+    return payload
+
+
+def serialize_invite_code(invite_code):
+    return {
+        "id": invite_code.id,
+        "code": invite_code.code,
+        "label": invite_code.label,
+        "is_active": invite_code.is_active,
+        "max_uses": invite_code.max_uses,
+        "used_count": len(invite_code.users),
+        "remaining_uses": max(invite_code.max_uses - len(invite_code.users), 0),
+        "expires_at": invite_code.expires_at.isoformat() if invite_code.expires_at else None,
+        "created_at": invite_code.created_at.isoformat() if invite_code.created_at else None,
+    }
 
 
 def serialize_auth_response(user, token=None):
@@ -92,6 +125,44 @@ def create_health_data_record(payload):
     return record
 
 
+def normalize_invite_code(code):
+    return (code or "").strip().upper()
+
+
+def generate_invite_code(prefix="NUVORA"):
+    suffix = secrets.token_hex(3).upper()
+    return f"{prefix.upper()}-{suffix}"
+
+
+def invite_code_has_capacity(invite_code):
+    return len(invite_code.users) < invite_code.max_uses
+
+
+def is_invite_code_valid(invite_code):
+    if not invite_code or not invite_code.is_active:
+        return False
+    if invite_code.expires_at and invite_code.expires_at <= datetime.now(timezone.utc):
+        return False
+    return invite_code_has_capacity(invite_code)
+
+
+def find_valid_invite_code(code):
+    normalized_code = normalize_invite_code(code)
+    if not normalized_code:
+        return None, "invite_code is required"
+
+    invite_code = InviteCode.query.filter_by(code=normalized_code).first()
+    if not invite_code:
+        return None, "invite_code is invalid"
+    if not invite_code.is_active:
+        return None, "invite_code is inactive"
+    if invite_code.expires_at and invite_code.expires_at <= datetime.now(timezone.utc):
+        return None, "invite_code has expired"
+    if not invite_code_has_capacity(invite_code):
+        return None, "invite_code has reached its usage limit"
+    return invite_code, None
+
+
 def get_current_user():
     user_id = session.get("user_id")
     if not user_id:
@@ -119,6 +190,28 @@ def get_current_api_user():
 
 def get_authenticated_user():
     return get_current_api_user() or get_current_user()
+
+
+def beta_invite_only_enabled():
+    return os.getenv("BETA_INVITE_ONLY", "false").lower() == "true"
+
+
+def get_admin_api_key():
+    return os.getenv("ADMIN_API_KEY")
+
+
+def admin_required(route):
+    @wraps(route)
+    def wrapped(*args, **kwargs):
+        configured_key = get_admin_api_key()
+        if not configured_key:
+            return jsonify({"error": "ADMIN_API_KEY is not configured"}), 500
+        provided_key = request.headers.get("X-Admin-Key", "")
+        if not secrets.compare_digest(provided_key, configured_key):
+            return jsonify({"error": "Admin authentication required"}), 401
+        return route(*args, **kwargs)
+
+    return wrapped
 
 
 def issue_api_token(user):
@@ -220,6 +313,18 @@ def create_app():
     def status():
         return jsonify({"message": "Nuvora API running!"})
 
+    @app.route("/beta/access")
+    def beta_access():
+        return jsonify({"invite_only": beta_invite_only_enabled()})
+
+    @app.route("/beta/invite-codes/validate", methods=["POST"])
+    def validate_invite_code():
+        payload = request.get_json() or {}
+        invite_code, error = find_valid_invite_code(payload.get("invite_code"))
+        if error:
+            return jsonify({"valid": False, "error": error}), 200
+        return jsonify({"valid": True, "invite_code": serialize_invite_code(invite_code)})
+
     @app.route("/auth/me")
     def auth_me():
         user = get_authenticated_user()
@@ -233,14 +338,24 @@ def create_app():
 
         username = (payload.get("username") or "").strip()
         password = payload.get("password") or ""
+        invite_code = None
         if len(username) < 3:
             return jsonify({"error": "username must be at least 3 characters"}), 400
         if len(password) < 6:
             return jsonify({"error": "password must be at least 6 characters"}), 400
         if User.query.filter_by(username=username).first():
             return jsonify({"error": "username already exists"}), 409
+        if beta_invite_only_enabled():
+            invite_code, error = find_valid_invite_code(payload.get("invite_code"))
+            if error:
+                return jsonify({"error": error}), 400
 
-        user = User(username=username, password_hash=generate_password_hash(password))
+        user = User(
+            username=username,
+            password_hash=generate_password_hash(password),
+            invite_code=invite_code,
+            invite_code_value=invite_code.code if invite_code else None,
+        )
         db.session.add(user)
         db.session.commit()
         session["user_id"] = user.id
@@ -353,6 +468,60 @@ def create_app():
         result["whisper_result"] = transcript.text
         return jsonify(result)
 
+    @app.route("/admin/invite-codes", methods=["GET"])
+    @admin_required
+    def list_invite_codes():
+        invite_codes = InviteCode.query.order_by(InviteCode.created_at.desc()).all()
+        return jsonify({"count": len(invite_codes), "items": [serialize_invite_code(item) for item in invite_codes]})
+
+    @app.route("/admin/invite-codes", methods=["POST"])
+    @admin_required
+    def create_invite_code():
+        payload = request.get_json() or {}
+        max_uses = payload.get("max_uses", 1)
+        label = (payload.get("label") or "").strip() or None
+        requested_code = payload.get("code")
+
+        try:
+            max_uses = int(max_uses)
+        except (TypeError, ValueError):
+            return jsonify({"error": "max_uses must be an integer"}), 400
+        if max_uses < 1:
+            return jsonify({"error": "max_uses must be at least 1"}), 400
+
+        code = normalize_invite_code(requested_code) if requested_code else generate_invite_code()
+        if InviteCode.query.filter_by(code=code).first():
+            return jsonify({"error": "invite code already exists"}), 409
+
+        invite_code = InviteCode(code=code, label=label, max_uses=max_uses)
+        db.session.add(invite_code)
+        db.session.commit()
+        return jsonify({"message": "Invite code created", "invite_code": serialize_invite_code(invite_code)}), 201
+
+    @app.route("/admin/invite-codes/<code>", methods=["PATCH"])
+    @admin_required
+    def update_invite_code(code):
+        invite_code = InviteCode.query.filter_by(code=normalize_invite_code(code)).first()
+        if not invite_code:
+            return jsonify({"error": "invite code not found"}), 404
+
+        payload = request.get_json() or {}
+        if "is_active" in payload:
+            invite_code.is_active = bool(payload["is_active"])
+        if "label" in payload:
+            invite_code.label = (payload.get("label") or "").strip() or None
+        if "max_uses" in payload:
+            try:
+                max_uses = int(payload["max_uses"])
+            except (TypeError, ValueError):
+                return jsonify({"error": "max_uses must be an integer"}), 400
+            if max_uses < len(invite_code.users):
+                return jsonify({"error": "max_uses cannot be lower than current used_count"}), 400
+            invite_code.max_uses = max_uses
+
+        db.session.commit()
+        return jsonify({"message": "Invite code updated", "invite_code": serialize_invite_code(invite_code)})
+
     @app.cli.command("seed-local-data")
     def seed_local_data():
         user = User.query.filter_by(username="demo-user").first()
@@ -368,6 +537,17 @@ def create_app():
         db.session.add(sample)
         db.session.commit()
         print("Seeded demo user and health data.")
+
+    @app.cli.command("create-invite-code")
+    def create_invite_code_command():
+        code = generate_invite_code()
+        while InviteCode.query.filter_by(code=code).first():
+            code = generate_invite_code()
+
+        invite_code = InviteCode(code=code)
+        db.session.add(invite_code)
+        db.session.commit()
+        print(code)
 
     return app
 

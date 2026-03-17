@@ -14,11 +14,13 @@ const audioPreview = document.getElementById("audio-preview");
 const recordStartButton = document.getElementById("record-start");
 const recordStopButton = document.getElementById("record-stop");
 const recordingStatus = document.getElementById("recording-status");
+const registerInviteCodeInput = document.getElementById("register-invite-code");
 
 let currentUser = null;
 let mediaRecorder = null;
 let recordedChunks = [];
 let recordedBlob = null;
+let inviteOnlyMode = false;
 
 function showResult(target, payload) {
   target.textContent = JSON.stringify(payload, null, 2);
@@ -51,6 +53,17 @@ function setAuthState(user) {
   }
 }
 
+function setBetaAccessState(inviteOnly) {
+  inviteOnlyMode = inviteOnly;
+  if (inviteOnly) {
+    registerInviteCodeInput.required = true;
+    registerInviteCodeInput.placeholder = "封測中，註冊需要有效邀請碼";
+  } else {
+    registerInviteCodeInput.required = false;
+    registerInviteCodeInput.placeholder = "目前可留空";
+  }
+}
+
 function renderHistory(items) {
   if (!items.length) {
     historyList.innerHTML = '<div class="empty-state">目前還沒有你的健康資料。</div>';
@@ -72,6 +85,12 @@ async function loadAuthState() {
   const payload = await response.json();
   setAuthState(payload.user);
   return payload.user;
+}
+
+async function loadBetaAccessState() {
+  const response = await fetch("/beta/access");
+  const payload = await response.json();
+  setBetaAccessState(Boolean(payload.invite_only));
 }
 
 async function loadHistory() {
@@ -171,6 +190,7 @@ registerForm.addEventListener("submit", async (event) => {
   const { response, payload } = await submitJson("/auth/register", {
     username: document.getElementById("register-username").value,
     password: document.getElementById("register-password").value,
+    invite_code: registerInviteCodeInput.value,
   });
 
   showResult(authResult, payload);
@@ -253,7 +273,7 @@ audioFileInput.addEventListener("change", () => {
   }
 });
 
-loadAuthState().then((user) => {
+Promise.all([loadBetaAccessState(), loadAuthState()]).then(([, user]) => {
   setRecorderButtons(false);
   if (user) {
     loadHistory();

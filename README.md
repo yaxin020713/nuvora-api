@@ -6,6 +6,8 @@ A simple Flask app for collecting and viewing health data.
 
 - `GET /` dashboard UI
 - `GET /status` health check
+- `GET /beta/access` read whether registration currently requires invite codes
+- `POST /beta/invite-codes/validate` validate an invite code without consuming it
 - `GET /auth/me` read current session state
 - `POST /auth/register` create an account, log in, and return a Bearer token
 - `POST /auth/login` log in and return a Bearer token
@@ -15,6 +17,9 @@ A simple Flask app for collecting and viewing health data.
 - `POST /health-data` create a health record for the current logged-in user
 - `POST /parse-text` parse a natural-language health message and optionally save it for the current logged-in user
 - `POST /whisper` upload an `audio` file for Whisper + GPT parsing and optionally save it for the current logged-in user
+- `GET /admin/invite-codes` list invite codes with `X-Admin-Key`
+- `POST /admin/invite-codes` create invite codes with `X-Admin-Key`
+- `PATCH /admin/invite-codes/<code>` enable/disable or resize invite codes with `X-Admin-Key`
 
 ## iOS-Friendly Auth
 
@@ -28,9 +33,11 @@ A simple Flask app for collecting and viewing health data.
 2. Set `OPENAI_API_KEY` if you want to use `/whisper`
 3. Set `SECRET_KEY` for stable login sessions
 4. Optionally set `DATABASE_URL`; otherwise the app uses local SQLite
-5. Run `flask db upgrade`
-6. Run `python app.py`
-7. Open `http://127.0.0.1:5000`
+5. Optionally set `BETA_INVITE_ONLY=true` if you want closed-beta registration
+6. Optionally set `ADMIN_API_KEY` so you can create invite codes over HTTP
+7. Run `flask db upgrade`
+8. Run `python app.py`
+9. Open `http://127.0.0.1:5000`
 
 ## Deployment Notes
 
@@ -46,3 +53,34 @@ A simple Flask app for collecting and viewing health data.
 4. Add environment variable `DATABASE_URL` or use `fromDatabase`
 5. Set `OPENAI_API_KEY`
 6. Set `SECRET_KEY`
+7. If you want invite-only beta, set `BETA_INVITE_ONLY=true`
+8. If you want to manage invite codes remotely, set `ADMIN_API_KEY`
+
+## Closed Beta / Invite Codes
+
+- Leave `BETA_INVITE_ONLY=false` if you want open registration
+- Set `BETA_INVITE_ONLY=true` if you want only invite-code holders to register
+- The web dashboard registration form will automatically ask for an invite code when invite-only mode is enabled
+
+### Create an invite code via CLI
+
+```bash
+flask create-invite-code
+```
+
+### Create an invite code via API
+
+```bash
+curl -X POST http://127.0.0.1:5000/admin/invite-codes \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: YOUR_ADMIN_API_KEY" \
+  -d '{"label":"founding-testers","max_uses":25}'
+```
+
+### Validate an invite code before registration
+
+```bash
+curl -X POST http://127.0.0.1:5000/beta/invite-codes/validate \
+  -H "Content-Type: application/json" \
+  -d '{"invite_code":"NUVORA-ABC123"}'
+```

@@ -48,6 +48,8 @@ Backend requires:
 - `OPENAI_API_KEY`
 - `SECRET_KEY`
 - `DATABASE_URL`
+- `BETA_INVITE_ONLY` (optional, set `true` for closed beta)
+- `ADMIN_API_KEY` (optional, used for invite code management)
 
 ## iOS source files already in repo
 
@@ -91,8 +93,18 @@ Important:
 - Flask backend running on Render
 - token auth for iOS
 - session auth for web
+- closed-beta invite code system
 - account deletion flow
 - health data endpoints
 - text parsing endpoint
 - whisper upload endpoint
 - SwiftUI iOS skeleton ready
+
+## Closed beta endpoints already in repo
+
+- `GET /beta/access`
+- `POST /beta/invite-codes/validate`
+- `GET /admin/invite-codes` with `X-Admin-Key`
+- `POST /admin/invite-codes` with `X-Admin-Key`
+- `PATCH /admin/invite-codes/<code>` with `X-Admin-Key`
+- CLI helper: `flask create-invite-code`
