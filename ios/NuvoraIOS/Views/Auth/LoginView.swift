@@ -3,7 +3,7 @@ import AuthenticationServices
 
 struct LoginView: View {
     @ObservedObject var authViewModel: AuthViewModel
-    @State private var username = ""
+    @State private var email = ""
     @State private var password = ""
     @State private var inviteCode = ""
 
@@ -11,7 +11,8 @@ struct LoginView: View {
         NavigationStack {
             Form {
                 Section("登入 Nuvora") {
-                    TextField("帳號", text: $username)
+                    TextField("Email", text: $email)
+                        .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
@@ -21,10 +22,10 @@ struct LoginView: View {
                 Section {
                     Button("登入") {
                         Task {
-                            await authViewModel.login(username: username, password: password)
+                            await authViewModel.login(email: email, password: password)
                         }
                     }
-                    .disabled(authViewModel.isLoading || username.isEmpty || password.isEmpty)
+                    .disabled(authViewModel.isLoading || email.isEmpty || password.isEmpty)
                 }
 
                 Section("或使用 Apple") {

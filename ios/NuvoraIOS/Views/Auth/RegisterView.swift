@@ -3,7 +3,7 @@ import AuthenticationServices
 
 struct RegisterView: View {
     @ObservedObject var authViewModel: AuthViewModel
-    @State private var username = ""
+    @State private var email = ""
     @State private var password = ""
     @State private var inviteCode = ""
 
@@ -11,7 +11,8 @@ struct RegisterView: View {
         NavigationStack {
             Form {
                 Section("建立帳號") {
-                    TextField("帳號", text: $username)
+                    TextField("Email", text: $email)
+                        .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
@@ -26,13 +27,13 @@ struct RegisterView: View {
                     Button("註冊並登入") {
                         Task {
                             await authViewModel.register(
-                                username: username,
+                                email: email,
                                 password: password,
                                 inviteCode: inviteCode.isEmpty ? nil : inviteCode
                             )
                         }
                     }
-                    .disabled(authViewModel.isLoading || username.count < 3 || password.count < 6)
+                    .disabled(authViewModel.isLoading || email.isEmpty || password.count < 6)
                 }
 
                 Section("或使用 Apple 建立帳號") {

@@ -96,6 +96,7 @@ Important:
 - session auth for web
 - closed-beta invite code system
 - Sign in with Apple backend support
+- local auth now uses email + password
 - account deletion flow
 - health data endpoints
 - text parsing endpoint

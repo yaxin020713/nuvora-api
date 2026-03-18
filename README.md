@@ -9,8 +9,8 @@ A simple Flask app for collecting and viewing health data.
 - `GET /beta/access` read whether registration currently requires invite codes
 - `POST /beta/invite-codes/validate` validate an invite code without consuming it
 - `GET /auth/me` read current session state
-- `POST /auth/register` create an account, log in, and return a Bearer token
-- `POST /auth/login` log in and return a Bearer token
+- `POST /auth/register` create an account with `email + password`, log in, and return a Bearer token
+- `POST /auth/login` log in with `email + password` and return a Bearer token
 - `POST /auth/apple` verify a Sign in with Apple identity token and return a Bearer token
 - `POST /auth/logout` log out the current session or invalidate the current Bearer token
 - `DELETE /auth/account` delete the current account after password confirmation
@@ -24,7 +24,7 @@ A simple Flask app for collecting and viewing health data.
 
 ## iOS-Friendly Auth
 
-- Native apps can call `POST /auth/register` or `POST /auth/login` and store the returned `token`
+- Native apps can call `POST /auth/register` or `POST /auth/login` with `email + password` and store the returned `token`
 - Native apps can also call `POST /auth/apple` with an Apple identity token from `ASAuthorizationAppleIDCredential`
 - Send `Authorization: Bearer <token>` on future API requests
 - The web dashboard still works with session cookies, so both web and iOS can share the same backend
@@ -65,7 +65,7 @@ A simple Flask app for collecting and viewing health data.
 - Backend verifies Apple identity tokens against Apple's public JWKS
 - Default expected audience is `com.yaxinzhu.nuvora`
 - First successful Apple sign-in creates a user with `auth_provider=apple`
-- Existing local username/password accounts continue to work unchanged
+- Existing local accounts now use `email + password`
 
 ### Sign in with Apple request example
 

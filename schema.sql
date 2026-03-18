@@ -27,3 +27,6 @@ ALTER TABLE users
     ADD COLUMN auth_provider VARCHAR(30) NOT NULL DEFAULT 'local',
     ADD COLUMN provider_subject VARCHAR(255) UNIQUE,
     ADD COLUMN email VARCHAR(255);
+
+ALTER TABLE users
+    ADD CONSTRAINT uq_users_email UNIQUE (email);

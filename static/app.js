@@ -188,7 +188,7 @@ registerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const { response, payload } = await submitJson("/auth/register", {
-    username: document.getElementById("register-username").value,
+    email: document.getElementById("register-email").value,
     password: document.getElementById("register-password").value,
     invite_code: registerInviteCodeInput.value,
   });
@@ -204,7 +204,7 @@ loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const { response, payload } = await submitJson("/auth/login", {
-    username: document.getElementById("login-username").value,
+    email: document.getElementById("login-email").value,
     password: document.getElementById("login-password").value,
   });
 

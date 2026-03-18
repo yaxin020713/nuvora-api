@@ -25,16 +25,16 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    func register(username: String, password: String, inviteCode: String? = nil) async {
+    func register(email: String, password: String, inviteCode: String? = nil) async {
         await runAuthFlow {
-            let response = try await apiClient.register(username: username, password: password, inviteCode: inviteCode)
+            let response = try await apiClient.register(email: email, password: password, inviteCode: inviteCode)
             currentUser = response.user
         }
     }
 
-    func login(username: String, password: String) async {
+    func login(email: String, password: String) async {
         await runAuthFlow {
-            let response = try await apiClient.login(username: username, password: password)
+            let response = try await apiClient.login(email: email, password: password)
             currentUser = response.user
         }
     }

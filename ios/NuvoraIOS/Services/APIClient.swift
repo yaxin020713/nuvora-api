@@ -51,20 +51,20 @@ final class APIClient {
         throw URLError(.badServerResponse)
     }
 
-    func register(username: String, password: String, inviteCode: String? = nil) async throws -> AuthResponse {
+    func register(email: String, password: String, inviteCode: String? = nil) async throws -> AuthResponse {
         var request = request(path: "auth/register", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(CredentialsRequest(username: username, password: password, inviteCode: inviteCode))
+        request.httpBody = try JSONEncoder().encode(CredentialsRequest(email: email, password: password, inviteCode: inviteCode))
 
         let response = try await send(request, as: AuthResponse.self)
         token = response.token
         return response
     }
 
-    func login(username: String, password: String) async throws -> AuthResponse {
+    func login(email: String, password: String) async throws -> AuthResponse {
         var request = request(path: "auth/login", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(CredentialsRequest(username: username, password: password, inviteCode: nil))
+        request.httpBody = try JSONEncoder().encode(CredentialsRequest(email: email, password: password, inviteCode: nil))
 
         let response = try await send(request, as: AuthResponse.self)
         token = response.token
@@ -156,12 +156,12 @@ final class APIClient {
 }
 
 private struct CredentialsRequest: Encodable {
-    let username: String
+    let email: String
     let password: String
     let inviteCode: String?
 
     enum CodingKeys: String, CodingKey {
-        case username
+        case email
         case password
         case inviteCode = "invite_code"
     }

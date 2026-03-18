@@ -148,6 +148,10 @@ def normalize_username(username):
     return (username or "").strip().lower()
 
 
+def normalize_email(email):
+    return (email or "").strip().lower()
+
+
 def make_unique_username(base_username):
     normalized = normalize_username(base_username)
     candidate = normalized or f"user-{secrets.token_hex(3)}"
@@ -264,12 +268,15 @@ def verify_apple_identity_token(identity_token):
 
 def create_apple_user(subject, email=None, username_hint=None, invite_code=None):
     username_seed = username_hint or username_from_email(email) or f"apple-{subject[-8:]}"
+    normalized_email = normalize_email(email)
+    if normalized_email and User.query.filter_by(email=normalized_email).first():
+        raise ValueError("email is already linked to another account")
     user = User(
         username=make_unique_username(username_seed),
         password_hash=None,
         auth_provider="apple",
         provider_subject=subject,
-        email=email,
+        email=normalized_email or None,
         invite_code=invite_code,
         invite_code_value=invite_code.code if invite_code else None,
     )
@@ -400,26 +407,27 @@ def create_app():
         if not payload:
             return jsonify({"error": "JSON body is required"}), 400
 
-        username = normalize_username(payload.get("username"))
+        email = normalize_email(payload.get("email"))
         password = payload.get("password") or ""
         invite_code = None
-        if len(username) < 3:
-            return jsonify({"error": "username must be at least 3 characters"}), 400
+        if "@" not in email or "." not in email.split("@")[-1]:
+            return jsonify({"error": "valid email is required"}), 400
         if len(password) < 6:
             return jsonify({"error": "password must be at least 6 characters"}), 400
-        if User.query.filter_by(username=username).first():
-            return jsonify({"error": "username already exists"}), 409
+        if User.query.filter_by(email=email).first():
+            return jsonify({"error": "email already exists"}), 409
         if beta_invite_only_enabled():
             invite_code, error = find_valid_invite_code(payload.get("invite_code"))
             if error:
                 return jsonify({"error": error}), 400
 
         user = User(
-            username=username,
+            username=make_unique_username(username_from_email(email) or "user"),
             password_hash=generate_password_hash(password),
             invite_code=invite_code,
             invite_code_value=invite_code.code if invite_code else None,
             auth_provider="local",
+            email=email,
         )
         db.session.add(user)
         db.session.commit()
@@ -433,11 +441,11 @@ def create_app():
         if not payload:
             return jsonify({"error": "JSON body is required"}), 400
 
-        username = normalize_username(payload.get("username"))
+        email = normalize_email(payload.get("email"))
         password = payload.get("password") or ""
-        user = User.query.filter_by(username=username).first()
+        user = User.query.filter_by(email=email).first()
         if not user or user.auth_provider != "local" or not user.password_hash or not check_password_hash(user.password_hash, password):
-            return jsonify({"error": "invalid username or password"}), 401
+            return jsonify({"error": "invalid email or password"}), 401
 
         session["user_id"] = user.id
         token = issue_api_token(user)
@@ -468,14 +476,17 @@ def create_app():
                 if error:
                     return jsonify({"error": error}), 400
 
-            user = create_apple_user(
-                subject=subject,
-                email=(payload.get("email") or email or "").strip() or None,
-                username_hint=(payload.get("username_hint") or "").strip() or None,
-                invite_code=invite_code,
-            )
+            try:
+                user = create_apple_user(
+                    subject=subject,
+                    email=(payload.get("email") or email or "").strip() or None,
+                    username_hint=(payload.get("username_hint") or "").strip() or None,
+                    invite_code=invite_code,
+                )
+            except ValueError as error:
+                return jsonify({"error": str(error)}), 409
         elif email and not user.email:
-            user.email = email
+            user.email = normalize_email(email)
             db.session.commit()
 
         session["user_id"] = user.id
@@ -636,6 +647,7 @@ def create_app():
                 username="demo-user",
                 password_hash=generate_password_hash("demo-pass"),
                 auth_provider="local",
+                email="demo-user@nuvora.local",
             )
             db.session.add(user)
             db.session.commit()
