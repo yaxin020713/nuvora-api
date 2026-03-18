@@ -50,6 +50,7 @@ Backend requires:
 - `DATABASE_URL`
 - `BETA_INVITE_ONLY` (optional, set `true` for closed beta)
 - `ADMIN_API_KEY` (optional, used for invite code management)
+- `APPLE_SIGN_IN_AUDIENCE` (optional, defaults to `com.yaxinzhu.nuvora`)
 
 ## iOS source files already in repo
 
@@ -94,6 +95,7 @@ Important:
 - token auth for iOS
 - session auth for web
 - closed-beta invite code system
+- Sign in with Apple backend support
 - account deletion flow
 - health data endpoints
 - text parsing endpoint
@@ -104,6 +106,7 @@ Important:
 
 - `GET /beta/access`
 - `POST /beta/invite-codes/validate`
+- `POST /auth/apple`
 - `GET /admin/invite-codes` with `X-Admin-Key`
 - `POST /admin/invite-codes` with `X-Admin-Key`
 - `PATCH /admin/invite-codes/<code>` with `X-Admin-Key`

@@ -11,6 +11,7 @@ A simple Flask app for collecting and viewing health data.
 - `GET /auth/me` read current session state
 - `POST /auth/register` create an account, log in, and return a Bearer token
 - `POST /auth/login` log in and return a Bearer token
+- `POST /auth/apple` verify a Sign in with Apple identity token and return a Bearer token
 - `POST /auth/logout` log out the current session or invalidate the current Bearer token
 - `DELETE /auth/account` delete the current account after password confirmation
 - `GET /health-data` list health records for the current logged-in user
@@ -24,6 +25,7 @@ A simple Flask app for collecting and viewing health data.
 ## iOS-Friendly Auth
 
 - Native apps can call `POST /auth/register` or `POST /auth/login` and store the returned `token`
+- Native apps can also call `POST /auth/apple` with an Apple identity token from `ASAuthorizationAppleIDCredential`
 - Send `Authorization: Bearer <token>` on future API requests
 - The web dashboard still works with session cookies, so both web and iOS can share the same backend
 
@@ -35,9 +37,10 @@ A simple Flask app for collecting and viewing health data.
 4. Optionally set `DATABASE_URL`; otherwise the app uses local SQLite
 5. Optionally set `BETA_INVITE_ONLY=true` if you want closed-beta registration
 6. Optionally set `ADMIN_API_KEY` so you can create invite codes over HTTP
-7. Run `flask db upgrade`
-8. Run `python app.py`
-9. Open `http://127.0.0.1:5000`
+7. Optionally set `APPLE_SIGN_IN_AUDIENCE`; by default it expects `com.yaxinzhu.nuvora`
+8. Run `flask db upgrade`
+9. Run `python app.py`
+10. Open `http://127.0.0.1:5000`
 
 ## Deployment Notes
 
@@ -55,6 +58,27 @@ A simple Flask app for collecting and viewing health data.
 6. Set `SECRET_KEY`
 7. If you want invite-only beta, set `BETA_INVITE_ONLY=true`
 8. If you want to manage invite codes remotely, set `ADMIN_API_KEY`
+9. If you enable Sign in with Apple, make sure `APPLE_SIGN_IN_AUDIENCE` matches your iOS bundle id
+
+## Sign in with Apple
+
+- Backend verifies Apple identity tokens against Apple's public JWKS
+- Default expected audience is `com.yaxinzhu.nuvora`
+- First successful Apple sign-in creates a user with `auth_provider=apple`
+- Existing local username/password accounts continue to work unchanged
+
+### Sign in with Apple request example
+
+```bash
+curl -X POST http://127.0.0.1:5000/auth/apple \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identity_token": "APPLE_IDENTITY_TOKEN",
+    "username_hint": "yaxin",
+    "email": "relay-or-real-email@example.com",
+    "invite_code": "NUVORA-ABC123"
+  }'
+```
 
 ## Closed Beta / Invite Codes
 

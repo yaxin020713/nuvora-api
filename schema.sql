@@ -19,3 +19,11 @@ CREATE TABLE invite_codes (
 ALTER TABLE users
     ADD COLUMN invite_code_id INTEGER REFERENCES invite_codes(id),
     ADD COLUMN invite_code_value VARCHAR(64);
+
+ALTER TABLE users
+    ALTER COLUMN password_hash DROP NOT NULL;
+
+ALTER TABLE users
+    ADD COLUMN auth_provider VARCHAR(30) NOT NULL DEFAULT 'local',
+    ADD COLUMN provider_subject VARCHAR(255) UNIQUE,
+    ADD COLUMN email VARCHAR(255);

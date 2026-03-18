@@ -51,10 +51,10 @@ final class APIClient {
         throw URLError(.badServerResponse)
     }
 
-    func register(username: String, password: String) async throws -> AuthResponse {
+    func register(username: String, password: String, inviteCode: String? = nil) async throws -> AuthResponse {
         var request = request(path: "auth/register", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(CredentialsRequest(username: username, password: password))
+        request.httpBody = try JSONEncoder().encode(CredentialsRequest(username: username, password: password, inviteCode: inviteCode))
 
         let response = try await send(request, as: AuthResponse.self)
         token = response.token
@@ -64,7 +64,22 @@ final class APIClient {
     func login(username: String, password: String) async throws -> AuthResponse {
         var request = request(path: "auth/login", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(CredentialsRequest(username: username, password: password))
+        request.httpBody = try JSONEncoder().encode(CredentialsRequest(username: username, password: password, inviteCode: nil))
+
+        let response = try await send(request, as: AuthResponse.self)
+        token = response.token
+        return response
+    }
+
+    func signInWithApple(identityToken: String, email: String? = nil, usernameHint: String? = nil, inviteCode: String? = nil) async throws -> AuthResponse {
+        var request = request(path: "auth/apple", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(AppleSignInRequest(
+            identityToken: identityToken,
+            email: email,
+            usernameHint: usernameHint,
+            inviteCode: inviteCode
+        ))
 
         let response = try await send(request, as: AuthResponse.self)
         token = response.token
@@ -143,6 +158,13 @@ final class APIClient {
 private struct CredentialsRequest: Encodable {
     let username: String
     let password: String
+    let inviteCode: String?
+
+    enum CodingKeys: String, CodingKey {
+        case username
+        case password
+        case inviteCode = "invite_code"
+    }
 }
 
 private struct ParseTextRequest: Encodable {
@@ -152,6 +174,20 @@ private struct ParseTextRequest: Encodable {
 
 private struct DeleteAccountRequest: Encodable {
     let password: String
+}
+
+private struct AppleSignInRequest: Encodable {
+    let identityToken: String
+    let email: String?
+    let usernameHint: String?
+    let inviteCode: String?
+
+    enum CodingKeys: String, CodingKey {
+        case identityToken = "identity_token"
+        case email
+        case usernameHint = "username_hint"
+        case inviteCode = "invite_code"
+    }
 }
 
 private extension Data {

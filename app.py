@@ -3,18 +3,22 @@ import os
 import secrets
 from datetime import datetime, timezone
 from functools import wraps
+from urllib.error import URLError
 
+import jwt
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, session
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from openai import OpenAI
+from jwt import PyJWKClient
 from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv()
 
 db = SQLAlchemy()
 migrate = Migrate()
+APPLE_JWKS_CLIENT = PyJWKClient("https://appleid.apple.com/auth/keys")
 
 
 class User(db.Model):
@@ -22,10 +26,13 @@ class User(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=True)
     api_token_hash = db.Column(db.String(255), nullable=True)
     invite_code_id = db.Column(db.Integer, db.ForeignKey("invite_codes.id"), nullable=True)
     invite_code_value = db.Column(db.String(64), nullable=True)
+    auth_provider = db.Column(db.String(30), nullable=False, default="local")
+    provider_subject = db.Column(db.String(255), nullable=True, unique=True)
+    email = db.Column(db.String(255), nullable=True)
 
 
 class HealthData(db.Model):
@@ -72,6 +79,9 @@ def serialize_user(user):
     payload = {"id": user.id, "username": user.username}
     if user.invite_code_value:
         payload["invite_code"] = user.invite_code_value
+    payload["auth_provider"] = user.auth_provider
+    if user.email:
+        payload["email"] = user.email
     return payload
 
 
@@ -132,6 +142,26 @@ def normalize_invite_code(code):
 def generate_invite_code(prefix="NUVORA"):
     suffix = secrets.token_hex(3).upper()
     return f"{prefix.upper()}-{suffix}"
+
+
+def normalize_username(username):
+    return (username or "").strip().lower()
+
+
+def make_unique_username(base_username):
+    normalized = normalize_username(base_username)
+    candidate = normalized or f"user-{secrets.token_hex(3)}"
+    suffix = 1
+    while User.query.filter_by(username=candidate).first():
+        suffix += 1
+        candidate = f"{normalized}-{suffix}" if normalized else f"user-{secrets.token_hex(3)}"
+    return candidate
+
+
+def username_from_email(email):
+    local_part = (email or "").split("@", 1)[0]
+    sanitized = "".join(char for char in local_part if char.isalnum() or char in ("-", "_", "."))
+    return sanitized[:40] if sanitized else ""
 
 
 def invite_code_has_capacity(invite_code):
@@ -212,6 +242,40 @@ def admin_required(route):
         return route(*args, **kwargs)
 
     return wrapped
+
+
+def get_apple_audience():
+    return os.getenv("APPLE_SIGN_IN_AUDIENCE") or "com.yaxinzhu.nuvora"
+
+
+def verify_apple_identity_token(identity_token):
+    try:
+        signing_key = APPLE_JWKS_CLIENT.get_signing_key_from_jwt(identity_token)
+        return jwt.decode(
+            identity_token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=get_apple_audience(),
+            issuer="https://appleid.apple.com",
+        )
+    except (jwt.PyJWTError, URLError) as error:
+        raise ValueError("Unable to verify Apple identity token") from error
+
+
+def create_apple_user(subject, email=None, username_hint=None, invite_code=None):
+    username_seed = username_hint or username_from_email(email) or f"apple-{subject[-8:]}"
+    user = User(
+        username=make_unique_username(username_seed),
+        password_hash=None,
+        auth_provider="apple",
+        provider_subject=subject,
+        email=email,
+        invite_code=invite_code,
+        invite_code_value=invite_code.code if invite_code else None,
+    )
+    db.session.add(user)
+    db.session.commit()
+    return user
 
 
 def issue_api_token(user):
@@ -336,7 +400,7 @@ def create_app():
         if not payload:
             return jsonify({"error": "JSON body is required"}), 400
 
-        username = (payload.get("username") or "").strip()
+        username = normalize_username(payload.get("username"))
         password = payload.get("password") or ""
         invite_code = None
         if len(username) < 3:
@@ -355,6 +419,7 @@ def create_app():
             password_hash=generate_password_hash(password),
             invite_code=invite_code,
             invite_code_value=invite_code.code if invite_code else None,
+            auth_provider="local",
         )
         db.session.add(user)
         db.session.commit()
@@ -368,15 +433,54 @@ def create_app():
         if not payload:
             return jsonify({"error": "JSON body is required"}), 400
 
-        username = (payload.get("username") or "").strip()
+        username = normalize_username(payload.get("username"))
         password = payload.get("password") or ""
         user = User.query.filter_by(username=username).first()
-        if not user or not check_password_hash(user.password_hash, password):
+        if not user or user.auth_provider != "local" or not user.password_hash or not check_password_hash(user.password_hash, password):
             return jsonify({"error": "invalid username or password"}), 401
 
         session["user_id"] = user.id
         token = issue_api_token(user)
         return jsonify({"message": "Logged in successfully", **serialize_auth_response(user, token)})
+
+    @app.route("/auth/apple", methods=["POST"])
+    def apple_auth():
+        payload = request.get_json() or {}
+        identity_token = payload.get("identity_token")
+        if not identity_token:
+            return jsonify({"error": "identity_token is required"}), 400
+
+        invite_code = None
+        try:
+            token_payload = verify_apple_identity_token(identity_token)
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 401
+
+        subject = token_payload.get("sub")
+        email = token_payload.get("email")
+        if not subject:
+            return jsonify({"error": "Apple identity token is missing subject"}), 400
+
+        user = User.query.filter_by(auth_provider="apple", provider_subject=subject).first()
+        if not user:
+            if beta_invite_only_enabled():
+                invite_code, error = find_valid_invite_code(payload.get("invite_code"))
+                if error:
+                    return jsonify({"error": error}), 400
+
+            user = create_apple_user(
+                subject=subject,
+                email=(payload.get("email") or email or "").strip() or None,
+                username_hint=(payload.get("username_hint") or "").strip() or None,
+                invite_code=invite_code,
+            )
+        elif email and not user.email:
+            user.email = email
+            db.session.commit()
+
+        session["user_id"] = user.id
+        token = issue_api_token(user)
+        return jsonify({"message": "Signed in with Apple", **serialize_auth_response(user, token)})
 
     @app.route("/auth/logout", methods=["POST"])
     def logout():
@@ -390,11 +494,13 @@ def create_app():
     @login_required
     def delete_account(current_user):
         payload = request.get_json()
-        if not payload:
+        if not payload and current_user.auth_provider == "local":
             return jsonify({"error": "JSON body is required"}), 400
 
-        password = payload.get("password") or ""
-        if not check_password_hash(current_user.password_hash, password):
+        password = (payload or {}).get("password") or ""
+        if current_user.auth_provider == "local" and (
+            not current_user.password_hash or not check_password_hash(current_user.password_hash, password)
+        ):
             return jsonify({"error": "invalid password"}), 401
 
         username = current_user.username
@@ -529,6 +635,7 @@ def create_app():
             user = User(
                 username="demo-user",
                 password_hash=generate_password_hash("demo-pass"),
+                auth_provider="local",
             )
             db.session.add(user)
             db.session.commit()

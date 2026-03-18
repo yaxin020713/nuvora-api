@@ -3,6 +3,15 @@ import Foundation
 struct User: Codable, Identifiable, Equatable {
     let id: Int
     let username: String
+    let authProvider: String?
+    let email: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case username
+        case authProvider = "auth_provider"
+        case email
+    }
 }
 
 struct AuthResponse: Codable {
